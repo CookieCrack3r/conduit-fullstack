@@ -6,8 +6,7 @@
 # =============================================================================
 FROM python:3.6-slim AS builder
 
-ENV PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
@@ -16,9 +15,12 @@ COPY requirements.txt ./
 # 21.3.1 is the last pip release supporting Python 3.6.
 # psycopg2-binary ships prebuilt wheels, so no compiler or libpq-dev is needed
 # here - which also avoids apt against Debian repositories that are archived.
+#
+# Caching is disabled via the CLI flag rather than PIP_NO_CACHE_DIR: the pip
+# bundled with Python 3.6 reads that variable as a path and crashes on "1".
 RUN python -m venv /opt/venv \
-    && /opt/venv/bin/pip install --upgrade "pip==21.3.1" \
-    && /opt/venv/bin/pip install -r requirements.txt
+    && /opt/venv/bin/pip install --no-cache-dir --upgrade "pip==21.3.1" \
+    && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 # =============================================================================
 # Stage 2 - runtime image.

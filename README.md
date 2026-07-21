@@ -22,6 +22,7 @@ A containerised fullstack deployment of the [RealWorld "Conduit"](https://github
   - [Known issues](#known-issues)
   - [Security notes](#security-notes)
 - [Troubleshooting](#troubleshooting)
+- [Credits](#credits)
 
 ## Description
 
@@ -40,7 +41,7 @@ Nothing in the application's business logic was modified. The changes here are l
 
 ### Architecture
 
-```
+```text
 browser
   ├── :8282  frontend   nginx serving the compiled Angular bundle
   └── :8000  backend    gunicorn + Django, static files via WhiteNoise
@@ -169,7 +170,13 @@ The upstream application is from 2017 and its dependency graph is fragile. These
 
 ### Known issues
 
-The upstream application has known functional bugs that are out of scope here and were left untouched. A freshly created database is empty, so article lists and tags render blank until content is created through the UI.
+The upstream application has known functional bugs. Those unrelated to containerisation were left untouched. A freshly created database is empty, so article lists and tags render blank until content is created through the UI.
+
+**Fixed:** `articles.service.ts` posted new articles to `/articles/` with a trailing slash, while the backend router is registered with `trailing_slash=False` and only answers `/articles`. Publishing an article therefore returned 404. It was the only call in that file carrying a trailing slash — the remaining ten already omitted it — so this was corrected rather than worked around.
+
+**Open:** the application's entire visual design is loaded from `//demo.productionready.io/main.css`, an external host that now returns 404. The frontend never shipped a stylesheet of its own (its local `styles.css` bundle is empty), so the UI renders unstyled. This is an upstream infrastructure failure, not a container issue, and no container-side change can restore it. An archived copy exists in the Internet Archive should vendoring the file locally become desirable.
+
+Note that this is separate from the Django static files, which *are* served correctly: `collectstatic` runs at image build time and WhiteNoise delivers the admin CSS with hashed filenames.
 
 ### Security notes
 
@@ -193,3 +200,12 @@ Static files are collected during the image build. Rebuild the backend image: `d
 
 **The backend exits with "timed out waiting for postgres".**
 The database did not become healthy within 60 seconds. Check `docker compose logs database`; raise `DB_WAIT_TIMEOUT` if the host is slow.
+
+## Credits
+
+Both applications originate from the [RealWorld](https://github.com/gothinkster/realworld) project and are reused here unchanged apart from what containerisation required:
+
+- Frontend: [gothinkster/angular-realworld-example-app](https://github.com/gothinkster/angular-realworld-example-app) — MIT, see `conduit-frontend/LICENSE`
+- Backend: [gothinkster/productionready-django-api](https://github.com/gothinkster/productionready-django-api)
+
+The containerisation — Dockerfiles, Compose setup, external configuration and this documentation — is the contribution of this repository.
