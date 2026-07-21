@@ -1,0 +1,15 @@
+# Keep the build context small and free of host-specific state.
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+db.sqlite3
+staticfiles/
+.env
+*.env
+.git/
+.gitignore
+*.md
+.vscode/
+.idea/
+*.log

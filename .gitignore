@@ -1,0 +1,31 @@
+# --- Secrets / local configuration -------------------------------------------
+# The real .env holds the VM address and DB credentials and must never be
+# committed. Track .env.example instead.
+.env
+*.env
+!.env.example
+
+# --- Python / Django ----------------------------------------------------------
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+db.sqlite3
+staticfiles/
+media/
+
+# --- Node / Angular -----------------------------------------------------------
+node_modules/
+dist/
+.angular/
+npm-debug.log*
+
+# --- Editors / OS -------------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Logs ---------------------------------------------------------------------
+*.log
