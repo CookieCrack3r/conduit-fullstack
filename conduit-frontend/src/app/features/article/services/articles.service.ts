@@ -38,7 +38,10 @@ export class ArticlesService {
 
   create(article: Partial<Article>): Observable<Article> {
     return this.http
-      .post<{ article: Article }>("/articles/", { article: article })
+      // No trailing slash: the backend router is registered with
+      // trailing_slash=False, so "/articles/" returns 404. Every other call in
+      // this file already omits it.
+      .post<{ article: Article }>("/articles", { article: article })
       .pipe(map((data) => data.article));
   }
 

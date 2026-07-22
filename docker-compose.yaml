@@ -1,0 +1,84 @@
+# Conduit - containerised fullstack setup (Angular + Django + PostgreSQL).
+#
+# Copy .env.example to .env and adjust it before running `docker compose up -d`.
+# PUBLIC_HOST is the single place where the externally reachable address is
+# configured; the API URL, ALLOWED_HOSTS and the CORS whitelist all derive
+# from it.
+
+services:
+  database:
+    image: postgres:13-alpine
+    container_name: conduit-database
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-conduit}
+      POSTGRES_USER: ${POSTGRES_USER:-conduit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+    volumes:
+      # Named volume - the database survives `docker compose down`.
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # The backend waits for this before running migrations.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-conduit} -d ${POSTGRES_DB:-conduit}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - conduit
+    # Deliberately no host port mapping: the database is only reachable from
+    # inside the Compose network.
+
+  backend:
+    build:
+      context: ./conduit-backend
+      dockerfile: Dockerfile
+    container_name: conduit-backend
+    restart: unless-stopped
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY must be set in .env}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
+      DJANGO_ALLOWED_HOSTS: ${PUBLIC_HOST:-localhost},localhost,127.0.0.1,backend
+      DJANGO_CORS_ORIGIN_WHITELIST: ${PUBLIC_HOST:-localhost}:${FRONTEND_PORT:-8282},localhost:${FRONTEND_PORT:-8282},127.0.0.1:${FRONTEND_PORT:-8282}
+      POSTGRES_DB: ${POSTGRES_DB:-conduit}
+      POSTGRES_USER: ${POSTGRES_USER:-conduit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_HOST: database
+      POSTGRES_PORT: 5432
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}
+      # Optional: when both are set the entrypoint creates the admin account.
+      DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME:-}
+      DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL:-}
+      DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD:-}
+    ports:
+      # Must be published: the browser calls this directly, not via the frontend.
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - conduit
+
+  frontend:
+    build:
+      context: ./conduit-frontend
+      dockerfile: Dockerfile
+      args:
+        # Build argument, not a runtime variable - Angular inlines this value
+        # into the bundle. Changing it requires a rebuild, not just a restart.
+        API_URL: http://${PUBLIC_HOST:-localhost}:${BACKEND_PORT:-8000}/api
+    container_name: conduit-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8282}:8282"
+    depends_on:
+      - backend
+    networks:
+      - conduit
+
+networks:
+  conduit:
+    driver: bridge
+
+volumes:
+  postgres_data:
