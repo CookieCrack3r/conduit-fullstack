@@ -174,7 +174,9 @@ The upstream application has known functional bugs. Those unrelated to container
 
 **Fixed:** `articles.service.ts` posted new articles to `/articles/` with a trailing slash, while the backend router is registered with `trailing_slash=False` and only answers `/articles`. Publishing an article therefore returned 404. It was the only call in that file carrying a trailing slash — the remaining ten already omitted it — so this was corrected rather than worked around.
 
-**Open:** the application's entire visual design is loaded from `//demo.productionready.io/main.css`, an external host that now returns 404. The frontend never shipped a stylesheet of its own (its local `styles.css` bundle is empty), so the UI renders unstyled. This is an upstream infrastructure failure, not a container issue, and no container-side change can restore it. An archived copy exists in the Internet Archive should vendoring the file locally become desirable.
+**Fixed:** the application's entire visual design was loaded from `//demo.productionready.io/main.css`, an external host that now returns 404 — the frontend never shipped a stylesheet of its own (`src/styles.css` contains only a placeholder comment), so the UI rendered completely unstyled. Since no container-side change can revive a dead third-party host, the stylesheet was recovered from an Internet Archive snapshot and vendored into `conduit-frontend/src/assets/main.css`, with its origin documented in the file header. The application now carries its own styling and no longer depends on that host.
+
+Two external stylesheets remain referenced in `index.html` — Ionicons and Google Fonts — both of which still resolve. They degrade gracefully if they ever stop: icons and web fonts fall back rather than the layout collapsing.
 
 Note that this is separate from the Django static files, which *are* served correctly: `collectstatic` runs at image build time and WhiteNoise delivers the admin CSS with hashed filenames.
 
