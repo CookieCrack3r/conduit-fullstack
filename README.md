@@ -14,6 +14,9 @@ A containerised fullstack deployment of the [RealWorld "Conduit"](https://github
   - [Configuration reference](#configuration-reference)
   - [Build-time vs. runtime configuration](#build-time-vs-runtime-configuration)
   - [Deploying to a remote VM](#deploying-to-a-remote-vm)
+    - [Required GitHub secrets](#required-github-secrets)
+    - [VM prerequisites](#vm-prerequisites)
+    - [Changing the target host](#changing-the-target-host)
   - [Common operations](#common-operations)
   - [Logs](#logs)
   - [Data persistence](#data-persistence)
@@ -36,7 +39,10 @@ Nothing in the application's business logic was modified. The changes here are l
 | --- | --- |
 | `conduit-backend/` | Django 1.10 REST API, its `Dockerfile` and `entrypoint.sh` |
 | `conduit-frontend/` | Angular 17 client, its `Dockerfile` and `nginx.conf` |
-| `docker-compose.yaml` | Service, network and volume definitions |
+| `docker-compose.yaml` | Local stack — builds the images from source |
+| `docker-compose.prod.yaml` | VM stack — pulls the pre-built images from GHCR, builds nothing |
+| `.github/workflows/docker-publish.yml` | CI: builds and pushes both images to GHCR |
+| `.github/workflows/deployment.yaml` | CD: deploys to the VM over SSH |
 | `.env.example` | Template for the local `.env` (never commit the real one) |
 
 ### Architecture
@@ -107,17 +113,47 @@ The backend, by contrast, reads everything at runtime, so a restart is enough fo
 
 ### Deploying to a remote VM
 
-Set the public address in `.env` on the VM and rebuild:
+Deployment is automated through GitHub Actions — the VM never builds anything.
 
-```bash
-PUBLIC_HOST=<your-vm-address>
+```text
+push to main
+  ├── docker-publish.yml   builds both images, pushes them to GHCR
+  └── deployment.yaml      (runs after a successful build)
+        ├── scp docker-compose.prod.yaml → VM
+        └── ssh: write .env from secrets, docker compose pull, up -d
 ```
 
-```bash
-docker compose up -d --build
-```
+Two workflows, split by responsibility:
 
-The frontend is then reachable on port `8282` of that address. Make sure the VM firewall or cloud security group allows inbound traffic on `8282` and `8000` — the browser needs both.
+- **`docker-publish.yml` (CI)** builds `conduit-backend` and `conduit-frontend` in a matrix and pushes them to `ghcr.io`. The frontend is built with `API_URL` derived from the `PUBLIC_HOST` secret, so the published image already points at the VM.
+- **`deployment.yaml` (CD)** copies only `docker-compose.prod.yaml` to the VM, writes the `.env` from repository secrets, then runs `docker compose -f docker-compose.prod.yaml pull` and `up -d`. On any error the step aborts and the workflow fails.
+
+Because the images are pre-built, the VM stack (`docker-compose.prod.yaml`) uses `image:` references instead of `build:` and pulls from GHCR.
+
+#### Required GitHub secrets
+
+Set these under *Settings → Secrets and variables → Actions*. None of them live in git.
+
+| Secret | Purpose |
+| --- | --- |
+| `SSH_HOST` | Public address of the VM |
+| `SSH_USER` | SSH login user |
+| `SSH_PRIVATE_KEY` | Private key authorised on the VM |
+| `PUBLIC_HOST` | Address the browser uses (usually the same as `SSH_HOST`) |
+| `DJANGO_SECRET_KEY` | Django signing key |
+| `POSTGRES_PASSWORD` | Database password |
+| `DJANGO_SUPERUSER_USERNAME` / `_EMAIL` / `_PASSWORD` | Admin account created on first deploy |
+
+The GHCR packages are public, so the VM pulls without authentication. If you switch them back to private, add a `GHCR_TOKEN` (`read:packages`) secret and a `docker login ghcr.io` step before the pull.
+
+#### VM prerequisites
+
+- Docker Engine with the Compose plugin installed (the workflow does not install it).
+- Inbound ports `8282` (frontend) and `8000` (backend) open in the firewall / security group — the browser needs both.
+
+#### Changing the target host
+
+`PUBLIC_HOST` is baked into the frontend image at build time. After changing it, a **new build** must run (push to `main` or trigger the Docker workflow) — redeploying the old image keeps the old address.
 
 ### Common operations
 
@@ -211,6 +247,3 @@ Both applications originate from the [RealWorld](https://github.com/gothinkster/
 - Backend: [gothinkster/productionready-django-api](https://github.com/gothinkster/productionready-django-api)
 
 The containerisation — Dockerfiles, Compose setup, external configuration and this documentation — is the contribution of this repository.
-
-
-## Docker Actions

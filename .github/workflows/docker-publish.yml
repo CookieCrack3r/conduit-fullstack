@@ -96,6 +96,12 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # The frontend bakes the API URL into its bundle at build time, so the
+          # published image must be built with the deployment's public address.
+          # PUBLIC_HOST is a repository secret (kept out of git); on PRs it may be
+          # empty, which just falls back to the Dockerfile default - fine, since
+          # PR builds are never deployed. The backend ignores this arg.
+          build-args: ${{ matrix.image == 'frontend' && secrets.PUBLIC_HOST != '' && format('API_URL=http://{0}:8000/api', secrets.PUBLIC_HOST) || '' }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
 

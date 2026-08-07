@@ -1,0 +1,95 @@
+name: Deploy
+
+# Deploys the containerised Conduit stack to the Cloud VM over SSH.
+#
+# The build does NOT happen on the VM: images are built and pushed by the
+# "Docker" workflow (docker-publish.yml). This workflow only copies the
+# production compose file to the VM, writes the .env from GitHub Secrets, and
+# starts the stack with `docker compose ... up -d`.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   SSH_HOST                  public address of the VM (kept out of git)
+#   SSH_USER                  SSH login user
+#   SSH_PRIVATE_KEY           private key authorised on the VM
+#   PUBLIC_HOST               address the browser uses (usually == SSH_HOST)
+#   DJANGO_SECRET_KEY         Django signing key
+#   POSTGRES_PASSWORD         database password
+#   DJANGO_SUPERUSER_USERNAME admin account (optional)
+#   DJANGO_SUPERUSER_EMAIL    admin login (optional)
+#   DJANGO_SUPERUSER_PASSWORD admin password (optional)
+#
+# The GHCR packages are public, so the VM pulls them without authentication.
+# If you ever switch them back to private, add a GHCR_TOKEN secret and a
+# `docker login ghcr.io` step before the pull.
+
+on:
+  # Run automatically after the images have been built and pushed on main.
+  workflow_run:
+    workflows: ["Docker"]
+    types: [completed]
+    branches: [main]
+  # Allow manual runs from the Actions tab.
+  workflow_dispatch:
+
+env:
+  DEPLOY_DIR: conduit
+  COMPOSE_FILE: docker-compose.prod.yaml
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Skip if the build workflow failed; always allow manual dispatch.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Copy only the production compose file to the VM - no source code.
+      - name: Copy compose file to the VM
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: ${{ env.COMPOSE_FILE }}
+          target: ${{ env.DEPLOY_DIR }}
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # Secrets are passed as envs so they never appear in the workflow log
+          # or in the checked-in script below.
+          envs: PUBLIC_HOST,DJANGO_SECRET_KEY,POSTGRES_PASSWORD,DJANGO_SUPERUSER_USERNAME,DJANGO_SUPERUSER_EMAIL,DJANGO_SUPERUSER_PASSWORD,DEPLOY_DIR,COMPOSE_FILE
+          script_stops: true   # abort (and fail the job) on the first error
+          script: |
+            set -euo pipefail
+            cd "${DEPLOY_DIR}"
+
+            # Write the .env from the injected secrets. Created fresh each deploy;
+            # never stored in git.
+            umask 077
+            cat > .env <<EOF
+            PUBLIC_HOST=${PUBLIC_HOST}
+            DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+            DJANGO_DEBUG=False
+            POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+            DJANGO_SUPERUSER_USERNAME=${DJANGO_SUPERUSER_USERNAME}
+            DJANGO_SUPERUSER_EMAIL=${DJANGO_SUPERUSER_EMAIL}
+            DJANGO_SUPERUSER_PASSWORD=${DJANGO_SUPERUSER_PASSWORD}
+            EOF
+
+            # Pull the freshly built images and (re)start in detached mode.
+            # The GHCR packages are public, so no docker login is needed.
+            docker compose -f "${COMPOSE_FILE}" pull
+            docker compose -f "${COMPOSE_FILE}" up -d --remove-orphans
+        env:
+          PUBLIC_HOST: ${{ secrets.PUBLIC_HOST }}
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          DJANGO_SUPERUSER_USERNAME: ${{ secrets.DJANGO_SUPERUSER_USERNAME }}
+          DJANGO_SUPERUSER_EMAIL: ${{ secrets.DJANGO_SUPERUSER_EMAIL }}
+          DJANGO_SUPERUSER_PASSWORD: ${{ secrets.DJANGO_SUPERUSER_PASSWORD }}
