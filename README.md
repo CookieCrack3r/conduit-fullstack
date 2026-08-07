@@ -211,3 +211,6 @@ Both applications originate from the [RealWorld](https://github.com/gothinkster/
 - Backend: [gothinkster/productionready-django-api](https://github.com/gothinkster/productionready-django-api)
 
 The containerisation — Dockerfiles, Compose setup, external configuration and this documentation — is the contribution of this repository.
+
+
+## Docker Actions
