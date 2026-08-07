@@ -1,0 +1,79 @@
+# Conduit - production stack for the Cloud VM.
+#
+# Unlike docker-compose.yaml, this file never builds anything: it pulls the
+# images that the CI pipeline (.github/workflows/docker-publish.yml) has already
+# built and pushed to GHCR. The VM only ever needs THIS file plus an .env - no
+# source code, no Dockerfiles.
+#
+# The .env is written by the deployment workflow from GitHub Secrets; it is
+# never committed and never copied from git.
+
+services:
+  database:
+    image: postgres:13-alpine
+    container_name: conduit-database
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-conduit}
+      POSTGRES_USER: ${POSTGRES_USER:-conduit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-conduit} -d ${POSTGRES_DB:-conduit}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - conduit
+
+  backend:
+    # Pulled, not built. Tag defaults to latest; override with IMAGE_TAG in .env
+    # to pin a specific release.
+    image: ghcr.io/cookiecrack3r/conduit-fullstack-backend:${IMAGE_TAG:-latest}
+    container_name: conduit-backend
+    restart: unless-stopped
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY must be set in .env}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-False}
+      # ALLOWED_HOSTS and CORS are read at RUNTIME, so PUBLIC_HOST is still
+      # needed here even though the frontend baked its own copy at build time.
+      DJANGO_ALLOWED_HOSTS: ${PUBLIC_HOST:-localhost},localhost,127.0.0.1,backend
+      DJANGO_CORS_ORIGIN_WHITELIST: ${PUBLIC_HOST:-localhost}:${FRONTEND_PORT:-8282},localhost:${FRONTEND_PORT:-8282},127.0.0.1:${FRONTEND_PORT:-8282}
+      POSTGRES_DB: ${POSTGRES_DB:-conduit}
+      POSTGRES_USER: ${POSTGRES_USER:-conduit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_HOST: database
+      POSTGRES_PORT: 5432
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}
+      DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME:-}
+      DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL:-}
+      DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD:-}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - conduit
+
+  frontend:
+    # The API URL is already compiled into this image (build-arg at CI time),
+    # so there is nothing host-specific to configure here.
+    image: ghcr.io/cookiecrack3r/conduit-fullstack-frontend:${IMAGE_TAG:-latest}
+    container_name: conduit-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8282}:8282"
+    depends_on:
+      - backend
+    networks:
+      - conduit
+
+networks:
+  conduit:
+    driver: bridge
+
+volumes:
+  postgres_data:
