@@ -64,7 +64,7 @@ jobs:
           # Secrets are passed as envs so they never appear in the workflow log
           # or in the checked-in script below.
           envs: PUBLIC_HOST,DJANGO_SECRET_KEY,POSTGRES_PASSWORD,DJANGO_SUPERUSER_USERNAME,DJANGO_SUPERUSER_EMAIL,DJANGO_SUPERUSER_PASSWORD,DEPLOY_DIR,COMPOSE_FILE
-          script_stops: true   # abort (and fail the job) on the first error
+          script_stop: true   # abort (and fail the job) on the first error
           script: |
             set -euo pipefail
             cd "${DEPLOY_DIR}"
