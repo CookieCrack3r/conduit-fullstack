@@ -29,9 +29,10 @@ services:
       - conduit
 
   backend:
-    # Pulled, not built. Tag defaults to latest; override with IMAGE_TAG in .env
-    # to pin a specific release.
-    image: ghcr.io/cookiecrack3r/conduit-fullstack-backend:${IMAGE_TAG:-latest}
+    # Pulled, not built. docker/metadata-action tags branch pushes with the
+    # branch name, so main builds publish `:main` (not `:latest`). Override with
+    # IMAGE_TAG in .env to pin a specific build.
+    image: ghcr.io/cookiecrack3r/conduit-fullstack-backend:${IMAGE_TAG:-main}
     container_name: conduit-backend
     restart: unless-stopped
     environment:
@@ -61,7 +62,7 @@ services:
   frontend:
     # The API URL is already compiled into this image (build-arg at CI time),
     # so there is nothing host-specific to configure here.
-    image: ghcr.io/cookiecrack3r/conduit-fullstack-frontend:${IMAGE_TAG:-latest}
+    image: ghcr.io/cookiecrack3r/conduit-fullstack-frontend:${IMAGE_TAG:-main}
     container_name: conduit-frontend
     restart: unless-stopped
     ports:
