@@ -23,7 +23,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-      start_period: 10s
+      start_period: 10sw
     networks:
       - conduit
     # Deliberately no host port mapping: the database is only reachable from
