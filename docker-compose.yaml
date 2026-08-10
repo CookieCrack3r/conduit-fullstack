@@ -76,7 +76,7 @@ services:
     networks:
       - conduit
 
-networks:
+networks: 
   conduit:
     driver: bridge
 
