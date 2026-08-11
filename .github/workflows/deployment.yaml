@@ -43,11 +43,11 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Copy only the production compose file to the VM - no source code.
       - name: Copy compose file to the VM
-        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
+        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1.0.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
@@ -56,7 +56,7 @@ jobs:
           target: ${{ env.DEPLOY_DIR }}
 
       - name: Deploy over SSH
-        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
@@ -64,8 +64,9 @@ jobs:
           # Secrets are passed as envs so they never appear in the workflow log
           # or in the checked-in script below.
           envs: PUBLIC_HOST,DJANGO_SECRET_KEY,POSTGRES_PASSWORD,DJANGO_SUPERUSER_USERNAME,DJANGO_SUPERUSER_EMAIL,DJANGO_SUPERUSER_PASSWORD,DEPLOY_DIR,COMPOSE_FILE
-          script_stop: true   # abort (and fail the job) on the first error
           script: |
+            # `set -e` aborts (and fails the job) on the first error; the
+            # ssh-action propagates the non-zero exit code.
             set -euo pipefail
             cd "${DEPLOY_DIR}"
 
@@ -86,6 +87,10 @@ jobs:
             # The GHCR packages are public, so no docker login is needed.
             docker compose -f "${COMPOSE_FILE}" pull
             docker compose -f "${COMPOSE_FILE}" up -d --remove-orphans
+
+            # Remove images left dangling by the pull (previous :main builds)
+            # so they do not accumulate on the VM disk over time.
+            docker image prune -f
         env:
           PUBLIC_HOST: ${{ secrets.PUBLIC_HOST }}
           DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
